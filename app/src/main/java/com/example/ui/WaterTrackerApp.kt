@@ -59,6 +59,9 @@ fun WaterTrackerApp(
     val settings by viewModel.settingsState.collectAsStateWithLifecycle()
     val logs by viewModel.logsState.collectAsStateWithLifecycle()
     val todayIntake by viewModel.todayIntake.collectAsStateWithLifecycle()
+    val streak by viewModel.gamificationStreak.collectAsStateWithLifecycle()
+    val badges by viewModel.gamificationBadges.collectAsStateWithLifecycle()
+    val challenges by viewModel.gamificationChallenges.collectAsStateWithLifecycle()
 
     val configuration = LocalConfiguration.current
     val isWideScreen = configuration.screenWidthDp >= 600
@@ -240,6 +243,9 @@ fun WaterTrackerApp(
                         todayIntake = todayIntake,
                         dailyGoal = settings.dailyGoalMl,
                         logs = logs,
+                        streak = streak,
+                        badges = badges,
+                        challenges = challenges,
                         onAddLog = { viewModel.addLog(it) },
                         onDeleteLog = { viewModel.deleteLog(it) }
                     )
@@ -275,6 +281,9 @@ fun TrackerScreen(
     todayIntake: Int,
     dailyGoal: Int,
     logs: List<WaterLog>,
+    streak: com.example.data.StreakInfo,
+    badges: List<com.example.data.Badge>,
+    challenges: List<com.example.data.Challenge>,
     onAddLog: (Int) -> Unit,
     onDeleteLog: (Int) -> Unit
 ) {
@@ -372,6 +381,14 @@ fun TrackerScreen(
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        item {
+            GamificationDashboard(
+                streak = streak,
+                badges = badges,
+                challenges = challenges
+            )
         }
 
         item {
@@ -1598,5 +1615,495 @@ private fun exportHealthReport(context: Context, logs: List<WaterLog>, goalMl: I
         context.startActivity(shareIntent)
     } catch (e: Exception) {
         e.printStackTrace()
+    }
+}
+
+// -------------------------------------------------------------
+// GAMIFICATION COMPONENTS (Streaks, Badges, and Challenges)
+// -------------------------------------------------------------
+@Composable
+fun GamificationDashboard(
+    streak: com.example.data.StreakInfo,
+    badges: List<com.example.data.Badge>,
+    challenges: List<com.example.data.Challenge>,
+    modifier: Modifier = Modifier
+) {
+    var selectedBadge by remember { mutableStateOf<com.example.data.Badge?>(null) }
+    val isDark = isSystemInDarkTheme()
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // 1. Streak Card
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = if (isDark) {
+                    MaterialTheme.colorScheme.surfaceVariant
+                } else {
+                    Color(0xFFF3EDF7)
+                }
+            ),
+            border = androidx.compose.foundation.BorderStroke(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+            ),
+            modifier = Modifier.fillMaxWidth().testTag("streak_display_card")
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Fire Icon Box with pulsating feel
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(60.dp)
+                        .clip(CircleShape)
+                        .background(
+                            brush = Brush.radialGradient(
+                                colors = listOf(Color(0xFFFF9E80), Color(0xFFFF3D00))
+                            )
+                        )
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Whatshot,
+                        contentDescription = "Active Streak Flame",
+                        tint = Color.White,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = "Hydration Streak",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Active Streak: ${streak.currentStreak} ${if (streak.currentStreak == 1) "day" else "days"}",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Longest Streak: ${streak.longestStreak} days • Met ${streak.totalGoalMetDays} days total",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                }
+            }
+        }
+
+        // 2. Badges Showcase Card
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            modifier = Modifier.fillMaxWidth().testTag("badges_display_card")
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "Milestone Badges",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Tap a badge to view unlock criteria",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    }
+                    val unlockedCount = badges.count { it.isUnlocked }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.primaryContainer)
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "$unlockedCount / ${badges.size}",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                androidx.compose.foundation.lazy.LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(badges) { badge ->
+                        BadgeItem(
+                            badge = badge,
+                            onClick = { selectedBadge = badge }
+                        )
+                    }
+                }
+            }
+        }
+
+        // 3. Weekly Challenges Card
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            modifier = Modifier.fillMaxWidth().testTag("challenges_display_card")
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "Active Hydration Challenges",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Complete goals to level up your score",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    challenges.forEach { challenge ->
+                        ChallengeItem(challenge = challenge)
+                    }
+                }
+            }
+        }
+    }
+
+    // Badge Unlock Information popup dialog
+    selectedBadge?.let { badge ->
+        AlertDialog(
+            onDismissRequest = { selectedBadge = null },
+            icon = {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (badge.isUnlocked) {
+                                Color.parseHex(badge.themeColorHex).copy(alpha = 0.15f)
+                            } else {
+                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
+                            }
+                        )
+                ) {
+                    Icon(
+                        imageVector = getBadgeIcon(badge.iconName),
+                        contentDescription = badge.name,
+                        tint = if (badge.isUnlocked) Color.parseHex(badge.themeColorHex) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+                        modifier = Modifier.size(36.dp)
+                    )
+                }
+            },
+            title = {
+                Text(
+                    text = badge.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+            },
+            text = {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = badge.description,
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Text(
+                        text = if (badge.isUnlocked) "🎉 Badge Unlocked! Awesome!" else "🔒 Currently Locked",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (badge.isUnlocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // Linear progress depiction
+                    val animatedProgress by animateFloatAsState(
+                        targetValue = badge.progress,
+                        animationSpec = tween(durationMillis = 800, easing = FastOutSlowInEasing)
+                    )
+                    LinearProgressIndicator(
+                        progress = { animatedProgress },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(8.dp)
+                            .clip(CircleShape),
+                        color = if (badge.isUnlocked) Color.parseHex(badge.themeColorHex) else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Progress: ${badge.targetValue} (${(badge.progress * 100).toInt()}% achieved)",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { selectedBadge = null }) {
+                    Text("Close")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun BadgeItem(
+    badge: com.example.data.Badge,
+    onClick: () -> Unit
+) {
+    val themeColor = remember(badge.themeColorHex) { Color.parseHex(badge.themeColorHex) }
+
+    Column(
+        modifier = Modifier
+            .clickable(onClick = onClick)
+            .width(80.dp)
+            .testTag("badge_item_${badge.id}"),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(64.dp)
+                .clip(CircleShape)
+                .background(
+                    if (badge.isUnlocked) {
+                        themeColor.copy(alpha = 0.12f)
+                    } else {
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f)
+                    }
+                )
+                .border(
+                    width = 2.dp,
+                    color = if (badge.isUnlocked) themeColor else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
+                    shape = CircleShape
+                )
+        ) {
+            Icon(
+                imageVector = getBadgeIcon(badge.iconName),
+                contentDescription = badge.name,
+                tint = if (badge.isUnlocked) themeColor else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f),
+                modifier = Modifier.size(30.dp)
+            )
+
+            // Show a tiny green check badge if unlocked
+            if (badge.isUnlocked) {
+                Box(
+                    modifier = Modifier
+                        .size(16.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF22C55E))
+                        .align(Alignment.BottomEnd)
+                        .border(1.dp, Color.White, CircleShape)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Check,
+                        contentDescription = "Unlocked Indicator",
+                        tint = Color.White,
+                        modifier = Modifier.size(10.dp)
+                    )
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = badge.name,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            textAlign = TextAlign.Center,
+            color = if (badge.isUnlocked) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+        )
+    }
+}
+
+@Composable
+fun ChallengeItem(
+    challenge: com.example.data.Challenge
+) {
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (challenge.isCompleted) Color(0xFF22C55E).copy(alpha = 0.15f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+        ),
+        modifier = Modifier.fillMaxWidth().testTag("challenge_item_${challenge.id}")
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // Icon
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (challenge.isCompleted) {
+                            Color(0xFF22C55E).copy(alpha = 0.12f)
+                        } else {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                        }
+                    )
+            ) {
+                Icon(
+                    imageVector = getBadgeIcon(challenge.iconName),
+                    contentDescription = challenge.title,
+                    tint = if (challenge.isCompleted) Color(0xFF22C55E) else MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+
+            // Challenge progress details
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = challenge.title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "+${challenge.points} pts",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (challenge.isCompleted) Color(0xFF22C55E) else MaterialTheme.colorScheme.primary
+                    )
+                }
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = challenge.description,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                // Progress Gauge
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    val animatedProgress by animateFloatAsState(
+                        targetValue = challenge.progress,
+                        animationSpec = tween(durationMillis = 600)
+                    )
+                    LinearProgressIndicator(
+                        progress = { animatedProgress },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(6.dp)
+                            .clip(CircleShape),
+                        color = if (challenge.isCompleted) Color(0xFF22C55E) else MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                    )
+                    Text(
+                        text = challenge.currentProgressText,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // Completed Check
+            if (challenge.isCompleted) {
+                Icon(
+                    imageVector = Icons.Filled.Stars,
+                    contentDescription = "Challenge Complete",
+                    tint = Color(0xFF22C55E),
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+    }
+}
+
+// Color Hex parsing extensions
+fun Color.Companion.parseHex(hexString: String): Color {
+    return try {
+        Color(android.graphics.Color.parseColor(hexString))
+    } catch (e: Exception) {
+        Color(0xFF6750A4)
+    }
+}
+
+fun getBadgeIcon(iconName: String): androidx.compose.ui.graphics.vector.ImageVector {
+    return when (iconName) {
+        "water_drop" -> Icons.Filled.WaterDrop
+        "workspace_premium" -> Icons.Filled.Star
+        "local_fire_department" -> Icons.Filled.Whatshot
+        "emoji_events" -> Icons.Filled.EmojiEvents
+        "pool" -> Icons.Filled.Pool
+        "schedule" -> Icons.Filled.Schedule
+        "lightbulb" -> Icons.Filled.Lightbulb
+        "star" -> Icons.Filled.Star
+        "sync" -> Icons.Filled.Sync
+        else -> Icons.Filled.WaterDrop
     }
 }
