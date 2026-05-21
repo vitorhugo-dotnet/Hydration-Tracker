@@ -1,0 +1,6 @@
+{
+  "name": "Hydration Tracker",
+  "description": "Track your daily water intake, schedule custom smart notifications, sync health credentials with Fitbit wearables, and generate comprehensive progress reports.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
